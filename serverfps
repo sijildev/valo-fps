@@ -1,0 +1,59 @@
+--// Roblox Services
+local Players = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Folders
+local Events = ServerScriptService:WaitForChild("Events")
+local Classes = ServerScriptService:WaitForChild("Classes")
+local Modules = ServerScriptService:WaitForChild("Modules")
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+--//Remotes
+local EquipRemote = Remotes:WaitForChild("Equip")
+
+--// Classes
+local PlayerData = require(Classes:WaitForChild("PlayerData"))
+local GunClass = require(Classes:WaitForChild("Gun"))
+
+--// Modules
+local GunData = require(Modules:WaitForChild("GunData"))
+
+--// Events
+local FireEvent = Events:WaitForChild("Fire")
+local ActionEvent = Events:WaitForChild("Action")
+
+local FPSServiceServer = {}
+
+EquipRemote.OnServerEvent:Connect(function(Player, WeaponName)
+	
+	local PlayerData = PlayerData:GetFromPlayer(Player)
+	PlayerData:EquipWeapon(WeaponName, GunData[PlayerData.Data.EquippedWeapon])
+	
+	local Gun = GunClass.new(Player, GunData[PlayerData.Data.EquippedWeapon])
+	
+	FireEvent.Event:Connect(function(Player, RaycastData)
+		
+		if Player == Player then
+			Gun:Fire()
+		end
+
+		
+	end)
+	
+	ActionEvent.Event:Connect(function(Player, ActionType)
+		
+		if Player == Player then
+			if ActionType == "Reload" then
+				Gun:Reload()
+			end
+		end
+		
+	end)
+	
+end)
+
+
+type FPSServiceServer = typeof(FPSServiceServer)
+
+return FPSServiceServer :: FPSServiceServer
