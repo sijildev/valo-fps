@@ -1,0 +1,159 @@
+--// Roblox Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+--// Custom Services
+local SoundService = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Services"):WaitForChild("SoundServiceClient"))
+
+--// Folders
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+--// Remotes
+local FireRemote = Remotes:WaitForChild("Fire")
+local UIRemote = Remotes:WaitForChild("UI")
+local RaycastRequest = Remotes:WaitForChild("RequestRaycast")
+
+--// Classes
+local PlayerDataClass = require(script.Parent:FindFirstChild("PlayerData"))
+
+local Gun = {}
+Gun.__index = Gun
+
+--// Classes
+local ProjectileClass = require(script.Parent:FindFirstChild("Projectile"))
+
+--// Tables
+local PreviousShotTimes = {}
+
+function Gun.new(Player, WeaponConfig)
+	local self = setmetatable({}, Gun)
+	
+	self.Player = Player
+	self.WeaponConfig = WeaponConfig
+	
+	self.Bullets = WeaponConfig.MagSize
+	self.MagReserve = WeaponConfig.MagReserve
+	
+	self.Reloading = false
+	
+	return self
+	
+end
+
+function Gun:Fire()
+	
+	if not PreviousShotTimes[self.Player] then
+		PreviousShotTimes[self.Player] = 0
+	end
+
+	if tick() - PreviousShotTimes[self.Player] < self.WeaponConfig.FireRate then
+		return
+	end
+
+	--[[if self.WeaponConfig.FullAuto == true then
+		
+		local ConsecutiveShots = 0
+		
+		while PlayerData.Data.HoldingLMB do
+			if tick() - PreviousShotTimes[self.Player] < self.WeaponConfig.FireRate then
+				break
+			end
+			if self.Bullets <= 0 then
+				break
+			end
+			if self.Reloading then
+				break
+			end
+			PreviousShotTimes[self.Player] = tick()
+			
+			local RaycastData = RaycastRequest:InvokeClient(self.Player)
+			if not RaycastData then
+				break
+			end
+			
+			RaycastData.Direction = RaycastData.Direction + Vector3.new(0, math.clamp((0.01 * ConsecutiveShots), 0, (0.01 * 10)), 0)
+			
+			local Bullet = ProjectileClass.new(self.Player, RaycastData, self.WeaponConfig)
+			Bullet:Fire()
+			
+			ConsecutiveShots += 1 
+
+			self.Bullets -= 1
+			FireRemote:FireClient(self.Player)
+			UIRemote:FireClient(self.Player, "UpdateBullets", nil, nil, nil, nil, self.Bullets, self.MagReserve)
+			task.wait(self.WeaponConfig.FireRate)
+		end
+	else
+		if self.Bullets <= 0 then
+			return
+		end
+		if self.Reloading then
+			return
+		end
+		--self.Bullets -= 1
+		PreviousShotTimes[self.Player] = tick()
+		local Bullet = ProjectileClass.new(self.Player, RaycastRequest:InvokeClient(self.Player), self.WeaponConfig)
+		FireRemote:FireClient(self.Player)
+		UIRemote:FireClient(self.Player, "UpdateBullets", nil, nil, nil, nil, self.Bullets, self.MagReserve)
+		Bullet:Fire()--]]
+	
+	if self.Bullets <= 0 then
+		return
+	end
+	if self.Reloading then
+		return
+	end
+	self.Bullets -= 1
+	PreviousShotTimes[self.Player] = tick()
+	local Bullet = ProjectileClass.new(self.Player, RaycastRequest:InvokeClient(self.Player), self.WeaponConfig)
+	FireRemote:FireClient(self.Player)
+	UIRemote:FireClient(self.Player, "UpdateBullets", nil, nil, nil, nil, self.Bullets, self.MagReserve)
+	Bullet:Fire()
+end
+
+function Gun:Reload()
+	
+	if self.Reloading then
+		return
+	end
+	
+	if self.Bullets >= self.WeaponConfig.MagSize then
+		return
+	end
+	
+	if self.MagReserve <= 0 then
+		return
+	end
+	
+	self.Reloading = true
+	
+	local BulletsToLoad = self.WeaponConfig.MagSize - self.Bullets
+	
+	local Character = self.Player.Character
+	if not Character then return end
+	
+	local HRP = Character:FindFirstChild("HumanoidRootPart")
+	if not HRP then return end
+	
+	SoundService:PlaySound("Reload")
+	
+	task.delay(self.WeaponConfig.ReloadSpeed, function()
+		if self.MagReserve >= BulletsToLoad then
+			self.Bullets += BulletsToLoad
+			self.MagReserve -= BulletsToLoad
+		else
+			self.Bullets += self.MagReserve
+			self.MagReserve = 0
+		end
+		self.Reloading = false
+		
+		UIRemote:FireClient(self.Player, "UpdateBullets", nil, nil, nil, nil, self.Bullets, self.MagReserve)
+
+		
+	end)
+
+end
+
+
+return Gun
