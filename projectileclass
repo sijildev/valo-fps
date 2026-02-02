@@ -1,0 +1,129 @@
+--// Roblox Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+--// Custom Services
+local VFXServiceServer = require(ServerScriptService:WaitForChild("Services"):WaitForChild("VFXServiceServer"))
+local HUDServiceServer = require(ServerScriptService:WaitForChild("Services"):WaitForChild("HUDServiceServer"))
+local SoundServiceClient = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Services"):WaitForChild("SoundServiceClient"))
+
+--// Classes
+local PlayerDataClass = require(ServerScriptService:WaitForChild("Classes"):WaitForChild("PlayerData"))
+
+
+--// Projectile Class
+local Projectile = {}
+Projectile.__index = Projectile
+
+function Projectile.new(Player, RaycastData, WeaponConfig)
+	
+	local self = setmetatable({}, Projectile)
+	
+	self.Player = Player
+	
+	self.Origin = RaycastData.Origin
+	self.MuzzleOrigin = RaycastData.MuzzleOrigin
+	self.Direction = RaycastData.Direction
+	
+	self.WeaponName = WeaponConfig.Name
+	self.Damage = WeaponConfig.Damage
+	
+	return self
+	
+end
+
+function Projectile:Fire()
+	
+	local Params = RaycastParams.new()
+	Params.FilterType = Enum.RaycastFilterType.Blacklist
+	Params.FilterDescendantsInstances = {self.Player.Character}
+	local Raycast = workspace:Raycast(self.Origin, self.Direction * 1000, Params)
+	
+	SoundServiceClient:PlaySound(self.WeaponName.."Shot")
+	
+	if Raycast then
+		self:HandleHit(Raycast.Instance, Raycast.Position)
+		VFXServiceServer:PlayVFX(self.Player, "Gunshot", Raycast.Position, self.MuzzleOrigin, Raycast.Instance)
+	else
+		VFXServiceServer:PlayVFX(self.Player, "Gunshot", self.Direction * 750, self.MuzzleOrigin, Raycast.Instance)
+	end
+	
+end
+
+function Projectile:HandleHit(Hit)
+	
+	local PlayerData = PlayerDataClass:GetFromPlayer(self.Player)
+	if not PlayerData then return end
+	
+	local Character = Hit:FindFirstAncestorOfClass("Model")
+	if Character then
+		if Players:GetPlayerFromCharacter(Character) then
+			local HitPlayer = Players:GetPlayerFromCharacter(Character)
+			if HitPlayer.Name == self.Player.Name then
+				return
+			end
+		end
+		local Humanoid = Character:FindFirstChild("Humanoid")
+		if Humanoid then
+			
+			if Humanoid.Health <= 0 then
+				return
+			end
+			
+			local Damage = nil
+			if Hit.Name == "Head" then
+				Damage = self.Damage.Head
+			elseif Hit.Name == "Torso" or Hit.Name == "HumanoidRootPart" then
+				Damage = self.Damage.Torso
+			elseif Hit.Name == "Left Arm" or Hit.Name == "Right Arm" then
+				Damage = self.Damage.Arm
+			elseif Hit.Name == "Left Leg" or Hit.Name == "Right Leg" then
+				Damage = self.Damage.Leg
+			end
+			
+			if Humanoid.Health - Damage <= 0 then
+				
+				local WasHeadshot = false
+				
+				if Hit.Name == "Head" then
+					WasHeadshot = true
+				end
+				
+
+				
+				if Character:GetAttribute("Practice") == false then
+					SoundServiceClient:PlaySound("Kill"..PlayerData.Data.KillStreak)
+					HUDServiceServer.DisplayKill(self.Player, Character, WasHeadshot, PlayerData.Data.KillStreak, nil, nil)
+
+					PlayerData.Data.KillStreak += 1
+
+					if PlayerData.Data.KillStreak >= 6 then
+						PlayerData.Data.KillStreak = 1
+					end
+				end
+				
+				if WasHeadshot then
+					SoundServiceClient:PlaySound("Headshot")
+					VFXServiceServer:PlayHeadshotVFX(Hit)
+				end
+			end
+			
+			Humanoid.Health -= Damage
+			
+		end
+	end
+	
+	--[[if Hit:GetAttribute("Taggable") then
+		task.spawn(function()
+			
+			VFXServiceServer:PlayVFX("Gunshot", Position, Hit)
+
+			
+		end)
+	end--]]
+	
+end
+
+return Projectile
